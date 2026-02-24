@@ -1215,7 +1215,7 @@ def calc(filepath, item_data_list):
     doc = ezodf.opendoc(filepath)
 
     # 書き込み開始シート（テンプレート開始位置）
-    base_sheet_index = 0
+    base_sheet_index = 1
     items_per_sheet = 20
     required_sheet_count = (len(item_data_list) - 1) // items_per_sheet + 1 if item_data_list else 1
 
