@@ -2,11 +2,13 @@ from tkinter import *
 import tkinter as tk
 from tkinter import ttk
 from tkinter import messagebox
+from tkinter import filedialog
 import datetime
 import time
 import ezodf
 import os
 import re
+import json
 from selenium import webdriver
 from selenium.webdriver.firefox.service import Service
 from selenium.webdriver.firefox.options import Options
@@ -31,6 +33,40 @@ if hasattr(sys, '_MEIPASS'):
     base_path = os.path.dirname(sys.executable)  # exeファイルのディレクトリ
 else:
     base_path = os.path.dirname(__file__)  # スクリプトのディレクトリ
+
+settings_filename = f"{os.path.splitext(os.path.basename(sys.executable if hasattr(sys, '_MEIPASS') else __file__))[0]}_settings.json"
+settings_path = os.path.join(base_path, settings_filename)
+
+
+def load_settings():
+    if not os.path.exists(settings_path):
+        return {}
+    try:
+        with open(settings_path, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def save_settings():
+    settings = {
+        'last_shop': shop_val.get(),
+        'firefox_profile_path': firefox_profile_path_var.get()
+    }
+    try:
+        with open(settings_path, 'w', encoding='utf-8') as f:
+            json.dump(settings, f, ensure_ascii=False, indent=2)
+    except Exception:
+        pass
+
+
+def browse_firefox_profile():
+    selected_dir = filedialog.askdirectory(
+        title='Firefoxプロファイルフォルダを選択',
+        initialdir=firefox_profile_path_var.get() if os.path.isdir(firefox_profile_path_var.get()) else base_path
+    )
+    if selected_dir:
+        firefox_profile_path_var.set(selected_dir)
 # 時間取得関数
 def Datetime():
     dt = datetime.datetime.now()
@@ -930,9 +966,10 @@ def yahoo_auction():
     firefox_options.headless = False  # ヘッドレスモードをオフにして実行
 
     # Firefoxプロファイルのパス
-    #firefox_profile_path = r'C:\Users\user\AppData\Roaming\Mozilla\Firefox\Profiles\4m3f1jye.default-release'
-    firefox_profile_path = r'C:\Users\yofhi\AppData\Roaming\Mozilla\Firefox\Profiles\0eo8moy8.test'
-    #firefox_profile_path = r'C:\Users\user\AppData\Roaming\Mozilla\Firefox\Profiles\cx6mclky.nakano'
+    firefox_profile_path = firefox_profile_path_var.get().strip()
+    if not firefox_profile_path or not os.path.isdir(firefox_profile_path):
+        messagebox.showerror("エラー", "有効なFirefoxプロファイルフォルダを選択してください。")
+        return
 
     # Firefoxのプロファイルを設定
     firefox_options.profile = firefox_profile_path
@@ -1177,11 +1214,20 @@ def calc(filepath, item_data_list):
     # Calcファイルを読み込む
     doc = ezodf.opendoc(filepath)
 
-    # シートを取得（1つ目のシートを取得する例）
-    sheet = doc.sheets[1]  # ここは適切なシート番号に修正してください
+    # 書き込み開始シート（テンプレート開始位置）
+    base_sheet_index = 0
+    items_per_sheet = 20
+    required_sheet_count = (len(item_data_list) - 1) // items_per_sheet + 1 if item_data_list else 1
+
+    if base_sheet_index + required_sheet_count > len(doc.sheets):
+        messagebox.showerror("エラー", f"値札出力に必要なシート数が不足しています。必要: {required_sheet_count} / 利用可能: {len(doc.sheets) - base_sheet_index}")
+        return
 
     # 商品ごとにデータを書き込む
-    for idx, item_info in enumerate(item_data_list[:20], start=1):
+    for global_idx, item_info in enumerate(item_data_list, start=1):
+        sheet_offset = (global_idx - 1) // items_per_sheet
+        idx_in_sheet = ((global_idx - 1) % items_per_sheet) + 1
+        sheet = doc.sheets[base_sheet_index + sheet_offset]
 
         if shop_val.get() == "上池袋":
             s_num = 22
@@ -1195,7 +1241,7 @@ def calc(filepath, item_data_list):
         if item_info[14] != "":
             c_item_info += "サイズ" + item_info[14]
         if item_info[11] != "":
-            situation = re.sub(r'[ \u3000\u3001]+', '/', item_info[11])
+            situation = re.sub(r'[ 　、]+', '/', item_info[11])
             c_item_info += "/" + situation
         if item_info[20] != "":
             c_item_info += "/" + item_info[20]
@@ -1203,38 +1249,38 @@ def calc(filepath, item_data_list):
             c_item_info += "/" + item_info[6]
         c_item_info += "/" + item_info[8] + "/オーク"
 
-        c_num = int(str(s_num) + str(year % 100) + str(month) + str(day) + str(idx).zfill(3))
+        c_num = int(str(s_num) + str(year % 100) + str(month) + str(day) + str(global_idx).zfill(3))
         c_price = int(item_info[5])
-        c_item_name = re.sub(r'[ \u3000\u3001]+', '/', item_info[3])
+        c_item_name = re.sub(r'[ 　、]+', '/', item_info[3])
 
-        if idx >= 16:
-            sheet[(idx - 16) * 7, 9].set_value(item_info[1])
-            sheet[1 + (idx - 16) * 7, 9].set_value(c_num)
-            sheet[2 + (idx - 16) * 7, 9].set_value(c_price)
-            sheet[2 + (idx - 16) * 7, 10].set_value(item_info[9])
-            sheet[4 + (idx - 16) * 7, 9].set_value(c_item_name)
-            sheet[5 + (idx - 16) * 7, 9].set_value(c_item_info)
-        elif idx >= 11:
-            sheet[(idx - 11) * 7, 6].set_value(item_info[1])
-            sheet[1 + (idx - 11) * 7, 6].set_value(c_num)
-            sheet[2 + (idx - 11) * 7, 6].set_value(c_price)
-            sheet[2 + (idx - 11) * 7, 7].set_value(item_info[9])
-            sheet[4 + (idx - 11) * 7, 6].set_value(c_item_name)
-            sheet[5 + (idx - 11) * 7, 6].set_value(c_item_info)
-        elif idx >= 6:
-            sheet[(idx - 6) * 7, 3].set_value(item_info[1])
-            sheet[1 + (idx - 6) * 7, 3].set_value(c_num)
-            sheet[2 + (idx - 6) * 7, 3].set_value(c_price)
-            sheet[2 + (idx - 6) * 7, 4].set_value(item_info[9])
-            sheet[4 + (idx - 6) * 7, 3].set_value(c_item_name)
-            sheet[5 + (idx - 6) * 7, 3].set_value(c_item_info)
+        if idx_in_sheet >= 16:
+            sheet[(idx_in_sheet - 16) * 7, 9].set_value(item_info[1])
+            sheet[1 + (idx_in_sheet - 16) * 7, 9].set_value(c_num)
+            sheet[2 + (idx_in_sheet - 16) * 7, 9].set_value(c_price)
+            sheet[2 + (idx_in_sheet - 16) * 7, 10].set_value(item_info[9])
+            sheet[4 + (idx_in_sheet - 16) * 7, 9].set_value(c_item_name)
+            sheet[5 + (idx_in_sheet - 16) * 7, 9].set_value(c_item_info)
+        elif idx_in_sheet >= 11:
+            sheet[(idx_in_sheet - 11) * 7, 6].set_value(item_info[1])
+            sheet[1 + (idx_in_sheet - 11) * 7, 6].set_value(c_num)
+            sheet[2 + (idx_in_sheet - 11) * 7, 6].set_value(c_price)
+            sheet[2 + (idx_in_sheet - 11) * 7, 7].set_value(item_info[9])
+            sheet[4 + (idx_in_sheet - 11) * 7, 6].set_value(c_item_name)
+            sheet[5 + (idx_in_sheet - 11) * 7, 6].set_value(c_item_info)
+        elif idx_in_sheet >= 6:
+            sheet[(idx_in_sheet - 6) * 7, 3].set_value(item_info[1])
+            sheet[1 + (idx_in_sheet - 6) * 7, 3].set_value(c_num)
+            sheet[2 + (idx_in_sheet - 6) * 7, 3].set_value(c_price)
+            sheet[2 + (idx_in_sheet - 6) * 7, 4].set_value(item_info[9])
+            sheet[4 + (idx_in_sheet - 6) * 7, 3].set_value(c_item_name)
+            sheet[5 + (idx_in_sheet - 6) * 7, 3].set_value(c_item_info)
         else:
-            sheet[(idx - 1) * 7, 0].set_value(item_info[1])
-            sheet[1 + (idx - 1) * 7, 0].set_value(c_num)
-            sheet[2 + (idx - 1) * 7, 0].set_value(c_price)
-            sheet[2 + (idx - 1) * 7, 1].set_value(item_info[9])
-            sheet[4 + (idx - 1) * 7, 0].set_value(c_item_name)
-            sheet[5 + (idx - 1) * 7, 0].set_value(c_item_info)
+            sheet[(idx_in_sheet - 1) * 7, 0].set_value(item_info[1])
+            sheet[1 + (idx_in_sheet - 1) * 7, 0].set_value(c_num)
+            sheet[2 + (idx_in_sheet - 1) * 7, 0].set_value(c_price)
+            sheet[2 + (idx_in_sheet - 1) * 7, 1].set_value(item_info[9])
+            sheet[4 + (idx_in_sheet - 1) * 7, 0].set_value(c_item_name)
+            sheet[5 + (idx_in_sheet - 1) * 7, 0].set_value(c_item_info)
 
     # 変更を保存する
 
@@ -1361,6 +1407,7 @@ def update_count(*args):
 
 def on_closing():
     if messagebox.askokcancel("確認", "アプリケーションを閉じますか？入力されたデータは失われます。"):
+        save_settings()
         root.destroy()  # ウィンドウを閉じる
 
 # メイン
@@ -1399,8 +1446,16 @@ shop_label = ttk.Label(frame1, text="取扱店舗", padding=(10))
 # 取扱店舗コンボボックス
 shop_val = StringVar()
 shop = ['上池袋', '要町', '中野']
-shop_val.set(shop[2])
+default_settings = load_settings()
+shop_val.set(default_settings.get('last_shop', shop[2]))
+if shop_val.get() not in shop:
+    shop_val.set(shop[2])
 shop_cb = ttk.Combobox(frame1, state='readonly', textvariable=shop_val, values=shop)
+
+firefox_profile_label = ttk.Label(frame1, text="Firefoxプロファイル", padding=(10))
+firefox_profile_path_var = StringVar(value=default_settings.get('firefox_profile_path', r'C:\Users\yofhi\AppData\Roaming\Mozilla\Firefox\Profiles\0eo8moy8.test'))
+firefox_profile_entry = ttk.Entry(frame1, textvariable=firefox_profile_path_var, width=60)
+firefox_profile_button = ttk.Button(frame1, text="参照", command=browse_firefox_profile)
 
 brand_name_label = ttk.Label(frame1, text="商品ブランド(メーカー)", padding=(10))
 brand_name = StringVar()
@@ -1535,43 +1590,49 @@ current_label_label.grid(row=2, column=0)
 current_label.grid(row=2, column=1,sticky=W)
 shop_label.grid(row=3, column=0)
 shop_cb.grid(row=3, column=1, sticky=W)
-brand_name_label.grid(row=4, column=0)
-brand_name_entry.grid(row=4, column=1, sticky=W)
-brand_kana_label.grid(row=5, column=0)
-brand_kana_entry.grid(row=5, column=1, sticky=W)
-item_name_label.grid(row=6, column=0)
-item_name_entry.grid(row=6, column=1, sticky=W)
-color_label.grid(row=7, column=0)
-color_entry.grid(row=7, column=1, sticky=W)
-te_label.grid(row=8, column=0)
-t_text_label.grid(row=8, column=1,sticky=W)
-count_label.grid(row=8, column=1, sticky=W, padx=600,)
-price_label.grid(row=9, column=0)
-price_entry.grid(row=9, column=1, sticky=W)
-price2_label.grid(row=9, column=1, sticky=W, padx=80)
-gender_label.grid(row=10, column=0)
-grb1.grid(row=10, column=1, sticky=W)
-grb2.grid(row=10, column=1, sticky=W,padx=100)
-grb3.grid(row=10, column=1, sticky=W,padx=200)
+firefox_profile_label.grid(row=4, column=0)
+firefox_profile_entry.grid(row=4, column=1, sticky=W)
+firefox_profile_button.grid(row=4, column=1, sticky=W, padx=620)
+brand_name_label.grid(row=5, column=0)
+brand_name_entry.grid(row=5, column=1, sticky=W)
+brand_kana_label.grid(row=6, column=0)
+brand_kana_entry.grid(row=6, column=1, sticky=W)
+item_name_label.grid(row=7, column=0)
+item_name_entry.grid(row=7, column=1, sticky=W)
+color_label.grid(row=8, column=0)
+color_entry.grid(row=8, column=1, sticky=W)
+te_label.grid(row=9, column=0)
+t_text_label.grid(row=9, column=1,sticky=W)
+count_label.grid(row=9, column=1, sticky=W, padx=600,)
+price_label.grid(row=10, column=0)
+price_entry.grid(row=10, column=1, sticky=W)
+price2_label.grid(row=10, column=1, sticky=W, padx=80)
+gender_label.grid(row=11, column=0)
+grb1.grid(row=11, column=1, sticky=W)
+grb2.grid(row=11, column=1, sticky=W,padx=100)
+grb3.grid(row=11, column=1, sticky=W,padx=200)
 
-genre_label.grid(row=11, column=0)
-genre_cb.grid(row=11, column=1, sticky=W)
+genre_label.grid(row=12, column=0)
+genre_cb.grid(row=12, column=1, sticky=W)
 
-situation_label.grid(row=15, column=0)
-situation_cb.grid(row=15,column=1, sticky=W)
-rank_cb.grid(row=15,column=1, sticky=W, padx=120)
-rank2_cb.grid(row=15,column=1, sticky=W, padx=190)
-ss_text_entry.grid(row=15,column=1, sticky=W, padx=340)
-ss_text_label.grid(row=15,column=1, sticky=W, padx=410)
-s_text_entry.grid(row=16, column=1, sticky=W)
-postage_label.grid(row=17,column=0)
-pos1.grid(row=17, column=1, sticky=W)
-pos2.grid(row=17, column=1, sticky=W,padx=100)
-prev_button.grid(row=18, column=1, sticky=W)
-next_button.grid(row=18, column=1, sticky=W, padx=100)
-calc_button.grid(row=18, column=1, sticky=W, padx=200)
-auc_button.grid(row=18, column=1, sticky=W, padx=300)
-delete_button.grid(row=18, column=1, sticky=W, padx=400)
+situation_label.grid(row=16, column=0)
+situation_cb.grid(row=16,column=1, sticky=W)
+rank_cb.grid(row=16,column=1, sticky=W, padx=120)
+rank2_cb.grid(row=16,column=1, sticky=W, padx=190)
+ss_text_entry.grid(row=16,column=1, sticky=W, padx=340)
+ss_text_label.grid(row=16,column=1, sticky=W, padx=410)
+s_text_entry.grid(row=17, column=1, sticky=W)
+postage_label.grid(row=18,column=0)
+pos1.grid(row=18, column=1, sticky=W)
+pos2.grid(row=18, column=1, sticky=W,padx=100)
+prev_button.grid(row=19, column=1, sticky=W)
+next_button.grid(row=19, column=1, sticky=W, padx=100)
+calc_button.grid(row=19, column=1, sticky=W, padx=200)
+auc_button.grid(row=19, column=1, sticky=W, padx=300)
+delete_button.grid(row=19, column=1, sticky=W, padx=400)
+
+shop_val.trace_add('write', lambda *args: save_settings())
+firefox_profile_path_var.trace_add('write', lambda *args: save_settings())
 
 frame1.pack()
 root.protocol("WM_DELETE_WINDOW", on_closing)
