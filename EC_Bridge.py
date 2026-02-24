@@ -922,8 +922,8 @@ def yahoo_auction():
     firefox_options.headless = False  # ヘッドレスモードをオフにして実行
 
     # Firefoxプロファイルのパス
-    #firefox_profile_path = r'C:\Users\user\AppData\Roaming\Mozilla\Firefox\Profiles\4m3f1jye.default-release'
-    firefox_profile_path = r'C:\Users\yofhi\AppData\Roaming\Mozilla\Firefox\Profiles\0eo8moy8.test'
+    firefox_profile_path = r'C:\Users\user\AppData\Roaming\Mozilla\Firefox\Profiles\ifhijbkj.default'
+    #firefox_profile_path = r'C:\Users\yofhi\AppData\Roaming\Mozilla\Firefox\Profiles\0eo8moy8.test'
     #firefox_profile_path = r'C:\Users\medamaya\AppData\Roaming\Mozilla\Firefox\Profiles\kh9wb7z9.default-release'
 
     # Firefoxのプロファイルを設定
