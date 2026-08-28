@@ -29,8 +29,10 @@ EDIT_URL = (BASE + "/items/create"
             "?folder_id={fid}&item_folder_id={fid}&item_id={iid}&action=edit")
 
 FIREFOX_BINARY = r"C:\Program Files\Mozilla Firefox\firefox.exe"
-PER_ITEM_PAUSE = 1.5         # bot 検知よけ
-UPLOAD_ATTEMPTS = 5          # 「通信エラー」対策。毎回一覧を確認してから再試行
+PER_ITEM_PAUSE = 1.5             # bot 検知よけ
+UPLOAD_CLICK_ATTEMPTS = 8        # 「決定する」を押し直す上限
+UPLOAD_WATCH_SECONDS = 35        # 1回の押下後、画面のアップロード結果を待つ秒数
+UPLOAD_OK_TEXT = "受け付け"       # 「商品データN件…を受け付けました」
 UPLOAD_ERROR_TEXT = "通信エラー"   # 競りナビが処理成功でも出すことがある
 
 # React の controlled textarea に値を入れて変更を通知する定番ハック
@@ -92,51 +94,20 @@ def _make_driver(geckodriver_path: str, profile_dir: str):
     return driver
 
 
-def _upload_csv(driver, wait, csv_path: str) -> str:
-    """CSV を一括アップロード（「決定する」クリックは1回だけ）。
+_KETTEI_XPATH = "//a[normalize-space()='決定する']"
 
-    競りナビは処理が通っても『通信エラー』を表示することがあり、リトライすると
-    **管理番号が重複登録される**（競りナビは重複排除しない）。そのため内部では
-    リトライせず、結果を呼び出し側が一覧で検証する。
 
-    戻り値: ``"ok"``（受付メッセージを確認）/ ``"error"``（通信エラー表示）/
-            ``"unknown"``（どちらも出ずタイムアウト）。
-    """
-
+def _kettei_enabled(driver):
+    """「決定する」が押せる状態か（ファイル選択後に disabled が外れる）。"""
     from selenium.webdriver.common.by import By
-    from selenium.webdriver.support import expected_conditions as EC
-    from selenium.webdriver.support.ui import WebDriverWait
+    els = driver.find_elements(By.XPATH, _KETTEI_XPATH)
+    return bool(els) and (els[0].get_attribute("disabled") or "false").lower() \
+        in ("false", "none", "")
 
-    csv_abs = os.path.abspath(csv_path)
-    basename = os.path.basename(csv_abs)
-    kettei = "//a[normalize-space()='決定する']"
 
-    def _enabled(d):
-        els = d.find_elements(By.XPATH, kettei)
-        return bool(els) and (els[0].get_attribute("disabled") or "false").lower() \
-            in ("false", "none", "")
-
-    driver.get(UPLOAD_URL)
-    fi = wait.until(EC.presence_of_element_located((By.ID, "uploadFile")))
-    fi.send_keys(csv_abs)
-    try:
-        WebDriverWait(driver, 20).until(lambda d: basename in d.page_source)
-    except Exception:
-        pass
-    WebDriverWait(driver, 30).until(_enabled)
-
-    # 実ユーザーのクリックに近い形で押す（JS click だと XHR が中途半端になり
-    # 『通信エラー』が出やすい）。駄目なら JS click にフォールバック。
-    btn = driver.find_element(By.XPATH, kettei)
-    driver.execute_script("arguments[0].scrollIntoView({block:'center'});", btn)
-    time.sleep(0.5)
-    try:
-        btn.click()
-    except Exception:
-        driver.execute_script("arguments[0].click();", btn)
-    time.sleep(2)
-
-    # 「決定する」の後に確認ダイアログが出るタイプなら、その実行ボタンも押す
+def _click_confirm_modal(driver):
+    """「決定する」後に確認ダイアログが出るタイプなら、その実行ボタンも押す。"""
+    from selenium.webdriver.common.by import By
     for label in ("アップロードする", "アップロード", "実行する", "はい", "OK"):
         for b in driver.find_elements(
                 By.XPATH, "//*[@role='dialog' or contains(@class,'modal') or "
@@ -147,15 +118,82 @@ def _upload_csv(driver, wait, csv_path: str) -> str:
             except Exception:
                 pass
 
-    deadline = time.time() + 40
-    while time.time() < deadline:
-        src = driver.page_source
-        if "受け付け" in src:
-            return "ok"
-        if UPLOAD_ERROR_TEXT in src:
-            return "error"
+
+def _upload_csv(driver, wait, csv_path: str, *, verify=None) -> str:
+    """CSV を一括アップロード。
+
+    画面のアップロード結果ログ（「…を受け付けました」）が出て、かつ「通信エラー」が
+    消えるまで「決定する」を押し直す。毎回アップロード画面を開き直すので、前の押下の
+    エラー表示が残ったまま判定することはない。
+
+    競りナビは処理が通っても「通信エラー」を出すことがあり、そのまま押し直すと
+    管理番号が重複登録される（競りナビは重複排除しない）。そのため押し直す前に
+    ``verify`` で一覧を確認し、既に登録されていれば止める。
+
+    戻り値: ``"ok"`` / ``"error"``（最後まで通信エラー）/ ``"unknown"``。
+    """
+
+    from selenium.webdriver.common.by import By
+    from selenium.webdriver.support import expected_conditions as EC
+    from selenium.webdriver.support.ui import WebDriverWait
+
+    csv_abs = os.path.abspath(csv_path)
+    basename = os.path.basename(csv_abs)
+    last = "unknown"
+
+    for attempt in range(1, UPLOAD_CLICK_ATTEMPTS + 1):
+        # 毎回まっさらな状態から：画面を開き直してファイルを選び直す
+        driver.get(UPLOAD_URL)
+        try:
+            fi = wait.until(
+                EC.presence_of_element_located((By.ID, "uploadFile")))
+        except Exception:
+            last = "unknown"
+            continue
+        fi.send_keys(csv_abs)
+        try:
+            WebDriverWait(driver, 20).until(lambda d: basename in d.page_source)
+            WebDriverWait(driver, 30).until(_kettei_enabled)
+        except Exception:
+            last = "unknown"
+            continue
+
+        # 「決定する」をネイティブクリック（JS click だと XHR が中途半端になり
+        # 「通信エラー」が出やすい）。駄目なら JS click にフォールバック。
+        btn = driver.find_element(By.XPATH, _KETTEI_XPATH)
+        driver.execute_script("arguments[0].scrollIntoView({block:'center'});", btn)
+        time.sleep(0.5)
+        try:
+            btn.click()
+        except Exception:
+            driver.execute_script("arguments[0].click();", btn)
         time.sleep(2)
-    return "unknown"
+        _click_confirm_modal(driver)
+
+        # この押下の結果ログを見る（画面は開き直しているので前回のエラーは無い）
+        deadline = time.time() + UPLOAD_WATCH_SECONDS
+        ok_seen = err_seen = False
+        while time.time() < deadline:
+            src = driver.page_source
+            ok_seen = UPLOAD_OK_TEXT in src
+            err_seen = UPLOAD_ERROR_TEXT in src
+            if ok_seen and not err_seen:
+                return "ok"                 # ログ確認・エラーなし → 次へ進む
+            if err_seen:
+                break                        # 通信エラー → 押し直す
+            time.sleep(2)
+        last = "error" if err_seen else "unknown"
+
+        # 押し直す前に、実はサーバー側で通っていないか一覧で確認（重複防止）
+        if verify is not None:
+            try:
+                if verify():
+                    return "ok"
+            except Exception:
+                pass
+        time.sleep(4)
+
+    return last
 
 
 def _folder_map(driver, fid: str, wanted: set[str], *, max_pages: int) -> dict[str, str]:
@@ -278,28 +316,21 @@ def publish(items: list[Item], config: AppConfig, csv_path: str, *,
         def _any_found(maps) -> bool:
             return any(set(maps[shop]) & wanted for shop, _, _, wanted in plan)
 
-        # 競りナビは処理成功でも『通信エラー』を出す一方、本当に失敗もする。
-        # 「アップロード → 一覧に出たか確認」を最大 UPLOAD_ATTEMPTS 回。
-        # 再アップロード前に必ず一覧を確認するので、成功していれば重複しない。
-        status = "unknown"
-        id_maps = {}
-        for attempt in range(1, UPLOAD_ATTEMPTS + 1):
-            status = _upload_csv(driver, wait, csv_path)
-            time.sleep(5)
-            id_maps = _probe()
-            if _any_found(id_maps):
-                break
-            # 反映待ちかもしれないので少し待って再確認
-            for _ in range(2):
-                time.sleep(12)
+        # アップロード：画面の結果ログを確認できるまで「決定する」を押し直す。
+        # verify で一覧を見てから押し直すので、通信エラー表示でも実は通っていた
+        # 場合に重複登録しない。
+        status = _upload_csv(driver, wait, csv_path,
+                             verify=lambda: _any_found(_probe()))
+
+        time.sleep(4)
+        id_maps = _probe()
+        if not _any_found(id_maps):
+            # 反映が遅れているだけかもしれないので少しだけ待って再確認
+            for _ in range(4):
+                time.sleep(15)
                 id_maps = _probe()
                 if _any_found(id_maps):
                     break
-            if _any_found(id_maps):
-                break
-            if progress:
-                progress(done, total, f"アップロード再試行 {attempt}/{UPLOAD_ATTEMPTS}"
-                                      f"（{status}）")
 
         if not _any_found(id_maps):
             hint = "（競りナビが『通信エラー』を返し続けています）" if status == "error" else ""
