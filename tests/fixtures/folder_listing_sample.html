@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<!--
+  競りナビ フォルダ一覧ページの構造だけを真似た合成データ。
+  実データは含まない（管理番号・item_id とも架空）。
+  parse_folder_listing() の回帰テスト用。
+-->
+<html lang="ja">
+<head><meta charset="utf-8"><title>Yahoo!オークション - 競りナビ（サンプル）</title></head>
+<body>
+<div class="itemList">
+
+  <div class="itemRow">
+    <label><input type="checkbox" name="itemCheckbox" class="sc-x kY" value="900000001"></label>
+    <p class="sc-7fb6e240-24 kPvyjU">管理番号 22260828001</p>
+    <a href="/serinavi/items/create?folder_id=1308997&amp;item_folder_id=1308997&amp;item_id=900000001&amp;action=edit">編集</a>
+  </div>
+
+  <div class="itemRow">
+    <label><input type="checkbox" name="itemCheckbox" class="sc-x kY" value="900000002"></label>
+    <p class="sc-7fb6e240-24 kPvyjU">管理番号 22260828002</p>
+    <a href="/serinavi/items/create?folder_id=1308997&amp;item_folder_id=1308997&amp;item_id=900000002&amp;action=edit">編集</a>
+  </div>
+
+  <div class="itemRow">
+    <label><input type="checkbox" name="itemCheckbox" class="sc-x kY" value="900000003"></label>
+    <p class="sc-7fb6e240-24 kPvyjU">管理番号 22260828003</p>
+    <a href="/serinavi/items/create?folder_id=1308997&amp;item_folder_id=1308997&amp;item_id=900000003&amp;action=edit">編集</a>
+  </div>
+
+  <div class="itemRow">
+    <label><input type="checkbox" name="itemCheckbox" class="sc-x kY" value="900000004"></label>
+    <p class="sc-7fb6e240-24 kPvyjU">管理番号 22260828004</p>
+    <a href="/serinavi/items/create?folder_id=1308997&amp;item_folder_id=1308997&amp;item_id=900000004&amp;action=edit">編集</a>
+  </div>
+
+  <!-- 管理番号を持たないブロック（ページャ等）は無視されること -->
+  <div class="pager">
+    <input type="checkbox" name="itemCheckbox" value="999999999">
+    <span>次のページ</span>
+  </div>
+
+</div>
+</body>
+</html>

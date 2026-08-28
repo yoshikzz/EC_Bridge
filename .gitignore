@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# PyInstaller の作業ディレクトリ
+/_build/
+*.spec
+
+# ビルド成果物。install.exe は店への受け渡し用にコミットする
+/dist/*
+!/dist/install.exe
+# installer/ にはソースだけ。exe は build.py が _build/ 経由で同梱する
+/installer/*.exe
+
+# インストール時 / 実行時に生成されるもの
+/install.json
+*_settings.json
+**/selftest.txt
+
+# 既定の出力先。実行時に自動作成されるので追跡しない
+/output/
+
+# LibreOffice のロックファイル
+.~lock.*#
+
+# 手元に置いた実データCSV・旧レイアウトの生成物（リポジトリ直下）
+/auctions_[0-9]*.csv
+/ネット用値札_*.ods
+/テスト結果*.xlsx
+
+# 手元に置いた競りナビの参照HTML（実データ・内部IDを含むので追跡しない）。
+# リポジトリ直下に .html は置かない方針（テスト用の合成HTMLは tests/fixtures/）。
+/*.html
+/*_files/
+
+# 一時ファイル
+/_t/
+_*.ods
+_*.xlsx
+_render/
+_v/
