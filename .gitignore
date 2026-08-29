@@ -37,6 +37,8 @@ venv/
 /*_files/
 
 # 一時ファイル
+*.bak
+/src/geckodriver.exe.*
 /_t/
 _*.ods
 _*.xlsx
