@@ -517,6 +517,21 @@ class PriceTagTests(unittest.TestCase):
         doc = ezodf.opendoc(out)
         self.assertEqual(doc.sheets[1][4 * 7, 9].value, "B39")   # 40件目=2タブ目の20番目
 
+    def test_keeps_cell_anchored_images(self):
+        """セルに置いた画像（「ネット販売中」等の draw:frame）が出力でも残る。"""
+        import re
+        import zipfile
+
+        def frame_count(path):
+            with zipfile.ZipFile(path) as z:
+                return len(re.findall(r"<draw:frame",
+                                      z.read("content.xml").decode("utf-8")))
+
+        items = [sample_item(brand=f"B{i}", name=f"N{i}", price="100")
+                 for i in range(core.ITEMS_PER_SHEET)]
+        out = self._write(items, medamaya_config())
+        self.assertEqual(frame_count(out), frame_count(REAL_TEMPLATE))
+
     def test_sheet_shortage_raises_with_helpful_message(self):
         cfg = medamaya_config()
         tpl = self._synthetic_template(1, cfg)

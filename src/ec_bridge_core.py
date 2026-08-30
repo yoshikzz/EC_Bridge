@@ -432,6 +432,20 @@ def build_tag_info(item: Item) -> str:
 # 値札出力
 # ---------------------------------------------------------------------------
 
+def _set_cell(cell, value) -> None:
+    """セルに値を書く。ezodf の :meth:`set_value` はセルの子要素を全消しするため、
+    セルにアンカーされた画像（``draw:frame`` = 「ネット販売中」等）まで消えてしまう。
+    書き込み前に図形を退避し、あとで元の並び順（テキストより前）に戻す。
+    """
+
+    node = cell.xmlnode
+    shapes = [child for child in node
+              if isinstance(child.tag, str) and child.tag.split("}")[-1] == "frame"]
+    cell.set_value(value)
+    for index, shape in enumerate(shapes):
+        node.insert(index, shape)
+
+
 def _price_tag_block(position: int) -> tuple[int, int]:
     """シート内の1始まり位置 -> (行オフセット, データ列)。"""
 
@@ -482,12 +496,12 @@ def write_price_tags(items: list[Item], config: AppConfig,
         c_name = re.sub(r"[ 　、]+", "/", item.name)
         c_info = build_tag_info(item)
 
-        sheet[row + 0, data_col].set_value(item.brand)
-        sheet[row + 1, data_col].set_value(c_num)
-        sheet[row + 2, data_col].set_value(c_price)
-        sheet[row + 2, label_col].set_value(item.rank)
-        sheet[row + 4, data_col].set_value(c_name)
-        sheet[row + 5, data_col].set_value(c_info)
+        _set_cell(sheet[row + 0, data_col], item.brand)
+        _set_cell(sheet[row + 1, data_col], c_num)
+        _set_cell(sheet[row + 2, data_col], c_price)
+        _set_cell(sheet[row + 2, label_col], item.rank)
+        _set_cell(sheet[row + 4, data_col], c_name)
+        _set_cell(sheet[row + 5, data_col], c_info)
 
     # 出力先は常に固定名。実行のたび同じファイルを上書き更新する（.bak は作らない）。
     out_path = os.path.join(out_dir, config.price_tag_filename)
